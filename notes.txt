@@ -1,0 +1,17 @@
+
+how do I want to use this?
+
+s: State = State::load("name");
+s: State = State::new("name");
+s: State = State::load_else_create("name");
+e: bool = State::exists("name");
+
+let var = s.get("var");
+s.set("var", var);
+
+s.preserve("name", "path");
+
+s.restore("name", "path");
+
+s.has("name");
+

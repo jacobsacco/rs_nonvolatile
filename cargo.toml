@@ -1,0 +1,17 @@
+[package]
+name = "nonvolatile"
+version = "0.1.0"
+authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0.98", features = ["derive"] }
+fs2 = "0.4.3"
+whoami = "0.5.3"
+serde_yaml = "0.8.9"
+tar = "0.4.26"
+simple-error = "0.2.1"
+generic_error = { path = "../generic_error" }
+fs_util = { path = "../fs_util" }
