@@ -3,15 +3,16 @@ name = "nonvolatile"
 version = "0.1.0"
 authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
 edition = "2018"
+description = "A package providing the ability to store configuration data out of the way"
+repository = "https://github.com/jacobsacco/rs_nonvolatile"
+license = "MIT"
+license-file = "License.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 serde = { version = "1.0.98", features = ["derive"] }
-fs2 = "0.4.3"
 whoami = "0.5.3"
 serde_yaml = "0.8.9"
-tar = "0.4.26"
-simple-error = "0.2.1"
-generic_error = { path = "../generic_error" }
-fs_util = { path = "../fs_util" }
+fs_util = "0.1.0"
+generic_error = "0.1.0"
