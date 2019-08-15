@@ -7,7 +7,7 @@
 **Nonvolatile is a library for storing persistent settings and configuration data out of the way.**
 
 Nonvolatile state is created by instantiating a `State` instance with a name, usually the name of the program creating it.
-Any set values are written to disk either in ~/.local/.../[name] or in appdata/.../[name], depending on the platform being used. Values persist until they are overwritten, and can be accessed by any program that loads the state with that name.
+Any set values are written to disk either in `~/.local/.../[name]` or in `%appdata%/.../[name]`, depending on the platform being used. Values persist until they are overwritten, and can be accessed by any program that loads the state with that name.
 
 **Note:** This library is still a work-in-progress and is not yet fully functional.
 
