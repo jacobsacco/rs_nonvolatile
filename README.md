@@ -8,13 +8,13 @@
 
 ## Example
 
-'''rust
+```rust
 use nonvolatile::State;
 use generic_error::*;
 
 fn main() -> Result<()> {
 	
-	//crate a new state instance
+	//create a new state instance
 	let mut state = State::load_else_create("foo")?;
 	//set a variable
 	state.set("var", "some value")?;
@@ -28,4 +28,4 @@ fn main() -> Result<()> {
 	println!("foo: {}", state.get("var").unwrap());  //"some value"	
 	Ok(())
 }
-'''
+```
