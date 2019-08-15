@@ -1,6 +1,7 @@
 
 # Nonvolatile &emsp; [![Latest Version]][crates.io]
 
+[Latest Version]: https://img.shields.io/crates/v/nonvolatile
 [crates.io]: https://crates.io/crates/nonvolatile
 
 **Nonvolatile is a library for storing persistent settings and configuration data out of the way. This library is still a work-in-progress, and not fully functional.**
