@@ -65,8 +65,9 @@ impl State {
 	}
 	
 	
-	pub fn get(self: &State, var: &str) -> Option<&String> {
-		self.items.get(var)
+	pub fn get(self: &State, var: &str) -> Option<String> {
+		let item = self.items.get(var)?;
+		Some(String::from(item))
 	}
 	
 	

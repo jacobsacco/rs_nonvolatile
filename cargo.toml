@@ -1,14 +1,20 @@
 [package]
 name = "nonvolatile"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
 edition = "2018"
 description = "A package providing the ability to store configuration data out of the way"
 repository = "https://github.com/jacobsacco/rs_nonvolatile"
 license = "MIT"
 license-file = "License.md"
+readme = "README.md"
+keywords = ["settings", "configuration", "storage", "store", "local"]
+categories = ["config", "database", "filesystem"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 serde = { version = "1.0.98", features = ["derive"] }
