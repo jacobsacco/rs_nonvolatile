@@ -9,13 +9,19 @@ use std::fs::{
 	rename, 
 	metadata,
 	read_to_string, 
-	OpenOptions
+	OpenOptions,
+	remove_file,
+	remove_dir_all,
 };
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use generic_error::{Result, GenErr, GenericError};
 use fs_util::copy_dir;
+
+
+#[cfg(test)]
+mod tests;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -50,24 +56,39 @@ fn get_storage_dir() -> Result<String> {
 
 impl State {
 
-	fn write_manifest(self: &State) -> Result<()> {
+	fn write_manifest(&self) -> Result<()> {
 		let mut file = OpenOptions::new().write(true).create(true).open(&self.tmp_manifest_path)?;
 		let data = serde_yaml::to_vec(self)?;
 		file.write(&data)?;
+		println!("Manifest data:\n {:?}", String::from_utf8(data).unwrap());
 		rename(&self.tmp_manifest_path, &self.manifest_path)?;
 		Ok(())
 	}
 	
 	
-	pub fn set(self: &mut State, var: &str, value: &str) -> Result<()> {
+	pub fn set(&mut self, var: &str, value: &str) -> Result<()> {
+		if self.preserved.contains_key(var) {
+			return GenErr!("nonvolatile: can't set a variable with the same name as a preserved file/folder");
+		}
 		let _ = self.items.insert(String::from(var), String::from(value));
 		self.write_manifest()
 	}
 	
 	
-	pub fn get(self: &State, var: &str) -> Option<String> {
+	pub fn get(&self, var: &str) -> Option<String> {
 		let item = self.items.get(var)?;
 		Some(String::from(item))
+	}
+	
+	
+	pub fn delete(&mut self, name: &str) -> Result<()> {
+		let _ = self.items.remove(name);
+		if let Some(_) = self.preserved.remove(name) {
+			let path = format!("{}/{}", &self.path, name);
+			remove_file(&path)?;
+			remove_dir_all(&path)?;
+		}
+		self.write_manifest()
 	}
 	
 	
@@ -105,12 +126,23 @@ impl State {
 	}
 	
 	
-	pub fn has(self: &State, item: &str) -> bool {
+	pub fn destroy_state(name: &str) {
+		if let Ok(dir) = get_storage_dir() {
+			let path = format!("{}/{}", dir, name);
+			let _ = remove_dir_all(path);
+		} 
+	}
+	
+	
+	pub fn has(&self, item: &str) -> bool {
 		self.items.contains_key(item) || self.preserved.contains_key(item)
 	}
 	
 	
-	pub fn preserve(self: &mut State, path: &str, name: &str) -> Result<()> {
+	pub fn preserve(&mut self, path: &str, name: &str) -> Result<()> {
+		if self.items.contains_key(name) {
+			return GenErr!("nonvolatile: can't preserve a file with the same name as a set variable");
+		}
 		let tmp_name = format!("tmp_{}", name);
 		let tmp_dest = format!("{}/{}", &self.path, &tmp_name);
 		let dest = format!("{}/{}", &self.path, name);
@@ -130,7 +162,7 @@ impl State {
 	}
 
 
-	pub fn restore(self: &State, name: &str) -> Result<()> {
+	pub fn restore(&self, name: &str) -> Result<()> {
 		let path = match self.preserved.get(name) {
 			Some(p) => p,
 			None => return GenErr!("Nothing by the name '{}' has been preserved", name),
@@ -139,7 +171,7 @@ impl State {
 	}
 	
 	
-	pub fn restore_to(self: &State, name: &str, path: &str) -> Result<()> {
+	pub fn restore_to(&self, name: &str, path: &str) -> Result<()> {
 		if !self.preserved.contains_key(name) {
 			return GenErr!("Nothing by the name '{}' has been preserved", name);
 		}

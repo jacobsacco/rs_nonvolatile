@@ -6,7 +6,6 @@ edition = "2018"
 description = "A package providing the ability to store configuration data out of the way"
 repository = "https://github.com/jacobsacco/rs_nonvolatile"
 license = "MIT"
-license-file = "License.md"
 readme = "README.md"
 keywords = ["settings", "configuration", "storage", "store", "local"]
 categories = ["config", "database", "filesystem"]
