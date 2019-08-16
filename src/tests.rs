@@ -110,8 +110,19 @@ fn test_delete_var() {
 #[test]
 fn test_preserve_and_restore() {
 	destroy_state();
-	
-	let mut _s = State::load_else_create("test").unwrap();
-	println!("{:?}", fs::canonicalize("."));
-	panic!("FUCK");
+	let _ = fs::remove_dir_all("tmp");
+	fs::create_dir_all("tmp/foo").unwrap();
+	fs::create_dir_all("tmp/foo_but_elsewhere").unwrap();
+	fs::write("tmp/foo/bar.txt", "foobar!").unwrap();
+	let mut s = State::load_else_create("test").unwrap();
+	s.preserve("tmp/foo", "foo").unwrap();
+	fs::remove_dir_all("tmp/foo").unwrap();
+	match fs::read_dir("tmp/foo") {
+		Ok(_) => panic!("tmp/foo still exists?!"),
+		_ => (),
+	};
+	s.restore("foo");
+	fs::read_dir("tmp/foo").unwrap();
+	s.restore_to("foo", "tmp/foo_but_elsewhere").unwrap();
+	fs::read_dir("tmp/foo_but_elsewhere/foo").unwrap();
 }
