@@ -109,20 +109,34 @@ fn test_delete_var() {
 
 #[test]
 fn test_preserve_and_restore() {
+	return
+	println!("reset any state and the tmp/ directory...");
 	destroy_state();
 	let _ = fs::remove_dir_all("tmp");
+	
+	println!("create a directory with stuff to manipulate...");
 	fs::create_dir_all("tmp/foo").unwrap();
 	fs::create_dir_all("tmp/foo_but_elsewhere").unwrap();
 	fs::write("tmp/foo/bar.txt", "foobar!").unwrap();
+	fs::read_dir("tmp/foo").unwrap();
+	
+	//println!("{:?}", fs::canonicalize("tmp/foo"));
+	println!("create the state and preserve the directory...");
 	let mut s = State::load_else_create("test").unwrap();
 	s.preserve("tmp/foo", "foo").unwrap();
+	
+	println!("destroy the directory and make sure it's gone...");
 	fs::remove_dir_all("tmp/foo").unwrap();
 	match fs::read_dir("tmp/foo") {
 		Ok(_) => panic!("tmp/foo still exists?!"),
 		_ => (),
 	};
+	
+	println!("restore the directory and make sure it's there again...");
 	s.restore("foo");
 	fs::read_dir("tmp/foo").unwrap();
+	
+	println!("restore the directory someplace else and make sure it shows up there too...");
 	s.restore_to("foo", "tmp/foo_but_elsewhere").unwrap();
 	fs::read_dir("tmp/foo_but_elsewhere/foo").unwrap();
 }

@@ -12,6 +12,7 @@ use std::fs::{
 	OpenOptions,
 	remove_file,
 	remove_dir_all,
+	canonicalize,
 };
 use std::collections::HashMap;
 use std::env;
@@ -60,7 +61,6 @@ impl State {
 		let mut file = OpenOptions::new().write(true).create(true).open(&self.tmp_manifest_path)?;
 		let data = serde_yaml::to_vec(self)?;
 		file.write(&data)?;
-		println!("Manifest data:\n {:?}", String::from_utf8(data).unwrap());
 		rename(&self.tmp_manifest_path, &self.manifest_path)?;
 		Ok(())
 	}
@@ -143,15 +143,18 @@ impl State {
 		if self.items.contains_key(name) {
 			return GenErr!("nonvolatile: can't preserve a file with the same name as a set variable");
 		}
+		let path = match canonicalize(path)?.to_str() {
+			Some(p) => String::from(p),
+			None => return GenErr!("nonvolatile preserve: failed to canonicalize path"),
+		};
 		let tmp_name = format!("tmp_{}", name);
 		let tmp_dest = format!("{}/{}", &self.path, &tmp_name);
 		let dest = format!("{}/{}", &self.path, name);
-		
-		if metadata(path)?.is_dir() {
-			copy_dir(path, &tmp_dest)?;
+		if metadata(&path)?.is_dir() {
+			copy_dir(&path, &tmp_dest)?;
 		}
 		else {
-			copy(path, &tmp_dest)?;
+			copy(&path, &tmp_dest)?;
 		}
 		
 		let _ = self.preserved.insert(String::from(name), String::from(path));
