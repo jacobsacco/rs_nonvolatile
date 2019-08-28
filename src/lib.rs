@@ -13,10 +13,14 @@ use std::fs::{
 	remove_file,
 	remove_dir_all,
 	canonicalize,
+	is_file,
 };
+use std::path::Path;
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
+use std::process;
+use sysinfo;
 use generic_error::{Result, GenErr, GenericError};
 use fs_util::copy_dir;
 
@@ -52,6 +56,34 @@ fn get_storage_dir() -> Result<String> {
 		},
 		_ => GenErr!("nonvolatile: {} not supported", whoami::platform()),
 	}
+}
+
+
+fn acquire_dir(storage_dir: String) -> Result<()> {
+	let lockfile_path = Path::new(format!("{}/{}", storage_dir, "~rust_nonvolatile.lock"));
+	if is_file(lockfile_path) {
+		let pid = process::id();
+		read the file
+		if file contents == pid {
+			return Ok(());
+		} 
+		let mut system = sysinfo::System::new();
+		system.refresh_processes();
+		for (other_pid, _proc) in system.get_process_list() {
+			if other_pid == pid {
+				return GenErr!("Can't acquire storage directory {}; already owned by process {}", storage_dir, other_pid);
+			}
+		}
+		let _ = remove_file(lockfile_path);
+	}
+	write pid to lockfile_path
+	Ok(())
+}
+
+
+fn release_dir(String) {
+	let lockfile_path = Path::new(format!("{}/{}", storage_dir, "~rust_nonvolatile.lock"));
+	let _ = remove_file(lockfile_path);
 }
 
 
