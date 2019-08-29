@@ -13,18 +13,17 @@ use std::fs::{
 	remove_file,
 	remove_dir_all,
 	canonicalize,
-	is_file,
 };
-use std::path::Path;
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::process;
 use std::thread;
 use std::time;
-use std::ops::Drop;
-use rand;
-use sysinfo;
+use std::mem::drop;
+use std::vec::Vec;
+use rand::random;
+use sysinfo::{System, SystemExt};
 use generic_error::{Result, GenErr, GenericError};
 use fs_util::copy_dir;
 
@@ -73,7 +72,7 @@ fn get_storage_dir() -> Result<String> {
 
 
 fn get_state_id() -> String {
-	format!("{}-{}", process:id(), rand_random::<u32>());
+	format!("{}-{}", process::id(), random::<u32>())
 }
 
 
@@ -81,19 +80,20 @@ fn match_state_id(my_id: &str, read_id: &str) -> WhoOwns {
 	if my_id == read_id {
 		return WhoOwns::Me;
 	}
-	let parts = read_id.split("-").collect();
-	let (pid_str, rid_str) = match parts.len() {
+	let parts: Vec<&str> = read_id.split("-").collect();
+	let parts = match parts.len() {
 		2 => (parts[0], parts[1]),
 		_ => return WhoOwns::Nobody,
 	};
-	let read_pid: u32 = match pid_str.parse() {
+	let read_pid: u32 = match parts.0.parse() {
 		Ok(pid) => pid,
-		Err(e) => return WhoOwns::Nobody,
+		Err(_) => return WhoOwns::Nobody,
 	};
-	let mut system = sysinfo::System::new();
+	let mut system = System::new();
 	system.refresh_processes();
+	
 	for (other_pid, _proc) in system.get_process_list() {
-		if other_pid == read_pid {
+		if *other_pid as u32 == read_pid {
 			return WhoOwns::Other;
 		}
 	}
@@ -102,11 +102,15 @@ fn match_state_id(my_id: &str, read_id: &str) -> WhoOwns {
 
 
 fn get_lock_acquired(lockfile_path: &str, state_id: &str) -> Result<bool> {
-	if !is_file(lockfile_path) {
+	let mdata = match metadata(lockfile_path) {
+		Ok(mdata) => mdata,
+		Err(_) => return Ok(false),
+	};
+	if !mdata.is_file() {
 		return Ok(false);
 	}
 	let read_id = read_to_string(lockfile_path)?;
-	match match_state_id(state_id, read_id) {
+	match match_state_id(state_id, &read_id) {
 		WhoOwns::Me => return Ok(true),
 		WhoOwns::Other => return GenErr!("lockfile {} already owned by state {}", lockfile_path, read_id),
 		WhoOwns::Nobody => return Ok(false),
@@ -118,11 +122,13 @@ fn acquire_dir(lockfile_path: &str, state_id: &str) -> Result<()> {
 	match get_lock_acquired(lockfile_path, state_id) {
 		Ok(true) => return Ok(()),
 		Ok(false) => (),
-		Err(e) => return e,
+		Err(e) => {
+			return Err(e)
+		},
 	};
-	let file = OpenOptions::new().write(true).create(true).open(lockfile_path)?;
+	let mut file = OpenOptions::new().write(true).create(true).open(lockfile_path)?;
 	write!(file, "{}", state_id)?;
-	drop file;
+	drop(file);
 	thread::sleep(time::Duration::new(0, 1000));
 	match get_lock_acquired(lockfile_path, state_id) {
 		Ok(true) => Ok(()),
@@ -173,11 +179,12 @@ impl State {
 		let dir = get_storage_dir()?;
 		let path = format!("{}/{}", &dir, name);
 		create_dir_all(&path)?;
+		
 		let items: HashMap<String, String> = HashMap::new();
 		let preserved: HashMap<String, String> = HashMap::new();
 		
 		let state_id = get_state_id();
-		let lockfile_path = Path::new(format!("{}/{}", path, "~rust_nonvolatile.lock"));
+		let lockfile_path = format!("{}/{}", &path, "~rust_nonvolatile.lock");
 		
 		acquire_dir(&lockfile_path, &state_id)?;
 		
@@ -185,14 +192,20 @@ impl State {
 			name: String::from(name),
 			path: path.clone(),
 			identifier: state_id,
-			lockfile_path: lockfile_path,
+			lockfile_path: lockfile_path.clone(),
 			manifest_path: format!("{}/{}", &path, ".manifest"),
 			tmp_manifest_path: format!("{}/{}", &path, ".manifest_tmp"),
 			items: items,
 			preserved: preserved,
 		};
-		State::write_manifest(&state)?;
-		Ok(state)
+		
+		match state.write_manifest() {
+			Ok(_) => Ok(state),
+			Err(e) => {
+				let _ = remove_file(&lockfile_path);
+				Err(e)
+			}
+		}
 	}
 	
 	
@@ -202,14 +215,27 @@ impl State {
 		let manifest_path = format!("{}/{}", &path, ".manifest");
 		
 		let state_id = get_state_id();
-		let lockfile_path = Path::new(format!("{}/{}", path, "~rust_nonvolatile.lock"));
+		let lockfile_path = format!("{}/{}", &path, "~rust_nonvolatile.lock");
 		
 		acquire_dir(&lockfile_path, &state_id)?;
 		
-		let data = read_to_string(&manifest_path)?;
-		let mut state: State = serde_yaml::from_str(&data)?;
+		let data = match read_to_string(&manifest_path) {
+			Ok(data) => data,
+			Err(e) => {
+				let _ = remove_file(&lockfile_path);
+				return Err(GenericError::from(e));
+			}
+		};
 		
-		state.state_id = state_id;
+		let mut state: State = match serde_yaml::from_str(&data) {
+			Ok(state) => state,
+			Err(e) => {
+				let _ = remove_file(&lockfile_path);
+				return Err(GenericError::from(e));
+			}
+		};
+		
+		state.identifier = state_id;
 		state.lockfile_path = lockfile_path;
 		
 		Ok(state)
@@ -234,7 +260,7 @@ impl State {
 	}
 	
 	
-	fn preserve(&mut self, path: &str, name: &str) -> Result<()> {
+	fn _preserve(&mut self, path: &str, name: &str) -> Result<()> {
 		if self.items.contains_key(name) {
 			return GenErr!("nonvolatile: can't preserve a file with the same name as a set variable");
 		}
@@ -260,16 +286,16 @@ impl State {
 	}
 
 
-	fn restore(&self, name: &str) -> Result<()> {
+	fn _restore(&self, name: &str) -> Result<()> {
 		let path = match self.preserved.get(name) {
 			Some(p) => p,
 			None => return GenErr!("Nothing by the name '{}' has been preserved", name),
 		};
-		self.restore_to(name, path)
+		self._restore_to(name, path)
 	}
 	
 	
-	fn restore_to(&self, name: &str, path: &str) -> Result<()> {
+	fn _restore_to(&self, name: &str, path: &str) -> Result<()> {
 		if !self.preserved.contains_key(name) {
 			return GenErr!("Nothing by the name '{}' has been preserved", name);
 		}
@@ -287,6 +313,6 @@ impl State {
 
 impl Drop for State {
 	fn drop(&mut self) {
-		let _ = remove_file(self.lockfile_path);
+		let _ = remove_file(&self.lockfile_path);
 	}
 }
