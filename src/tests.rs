@@ -15,7 +15,7 @@ fn test_state(s: &mut State) {
 	println!("Testing if state object is functional");
 	let _ = s.delete("test_var");
 	assert_eq!(s.has("test_var"), false);
-	s.set("test_var", "foo").unwrap();
+	s.set("test_var", "foo".to_string()).unwrap();
 	assert_eq!(s.has("test_var"), true);
 	assert_eq!(s.get("test_var"), Some(String::from("foo")));
 	println!("Done");
@@ -63,12 +63,12 @@ fn test_dir_locking() {
 		Ok(state) => state,
 		Err(_e) => return,
 	};
-	if let Err(_e) = state.set("var", "some value") {
+	if let Err(_e) = state.set("var", String::from("some value")) {
 		return;
 	}
 	
 	let state2 = State::load_else_create(&name).unwrap();
-	println!("foo: {}", state2.get("var").unwrap());  //"some value"
+	println!("foo: {}", state2.get::<String>("var").unwrap());  //"some value"
 }
 
 
@@ -104,7 +104,7 @@ fn test_manifest_write() {
 	let name = setup_env();
 	{
 		let mut s = State::load_else_create(&name).unwrap();
-		s.set("test manifest write", "foobar").unwrap();
+		s.set("test manifest write", String::from("foobar")).unwrap();
 	}
 	
 	{
@@ -124,7 +124,7 @@ fn test_has() {
 	let name = setup_env();
 	let mut s = State::load_else_create(&name).unwrap();
 	assert_eq!(s.has("something"), false);
-	s.set("something", "something").unwrap();
+	s.set("something", String::from("something")).unwrap();
 	assert_eq!(s.has("something"), true);
 	assert_eq!(s.has("something else"), false);
 }
@@ -133,10 +133,28 @@ fn test_has() {
 fn test_delete_var() {
 	let name = setup_env();
 	let mut s = State::load_else_create(&name).unwrap();
-	s.set("foo", "bar").unwrap();
+	s.set("foo", String::from("bar")).unwrap();
 	assert_eq!(s.has("foo"), true);
 	s.delete("foo").unwrap();
 	assert_eq!(s.has("foo"), false);
+}
+
+
+#[test]
+fn test_example() {
+	
+	//create a new state instance with the name "foo"
+	let mut state = State::load_else_create("foo").unwrap();
+	//set a variable in foo
+	state.set("var", String::from("some value")).unwrap();
+	
+	//destroy the state variable
+	drop(state);
+	
+	//create a new state instance
+	let state = State::load_else_create("foo").unwrap();
+	//retrieve the previously set variable.
+	println!("foo: {}", state.get::<String>("var").unwrap());  //"some value"	
 }
 
 /*

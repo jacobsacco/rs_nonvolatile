@@ -149,18 +149,32 @@ impl State {
 	}
 	
 	
-	pub fn set(&mut self, var: &str, value: &str) -> Result<()> {
+	pub fn set<T>(&mut self, var: &str, value: T) -> Result<()> where T: Serialize {
 		if self.preserved.contains_key(var) {
 			return GenErr!("nonvolatile: can't set a variable with the same name as a preserved file/folder");
 		}
-		let _ = self.items.insert(String::from(var), String::from(value));
+		let _ = self.items.insert(String::from(var), serde_yaml::to_string(&value)?);
 		self.write_manifest()
 	}
 	
+	/*
+	pub fn set<'a, R, T>(&mut self, var: &str, value: &'a R) -> Result<()> 
+	where &'a T: 'a + From<&'a R>, T: Serialize {
+		let value: &'a T = value.into();
+		if self.preserved.contains_key(var) {
+			return GenErr!("nonvolatile: can't set a variable with the same name as a preserved file/folder");
+		}
+		let _ = self.items.insert(String::from(var), serde_yaml::to_string(value)?);
+		self.write_manifest()
+	}*/
 	
-	pub fn get(&self, var: &str) -> Option<String> {
+	
+	pub fn get<'de, T>(&self, var: &str) -> Option<T> where for<'a> T: Deserialize<'a> {
 		let item = self.items.get(var)?;
-		Some(String::from(item))
+		match serde_yaml::from_str(item) {
+			Ok(obj) => Some(obj),
+			Err(_) => None,
+		}
 	}
 	
 	
