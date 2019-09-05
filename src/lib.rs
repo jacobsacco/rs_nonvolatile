@@ -89,6 +89,7 @@ fn match_state_id(my_id: &str, read_id: &str) -> WhoOwns {
 		Ok(pid) => pid,
 		Err(_) => return WhoOwns::Nobody,
 	};
+	
 	let mut system = System::new();
 	system.refresh_processes();
 	
@@ -126,9 +127,12 @@ fn acquire_dir(lockfile_path: &str, state_id: &str) -> Result<()> {
 			return Err(e)
 		},
 	};
+	
+	let _ = remove_file(lockfile_path);
 	let mut file = OpenOptions::new().write(true).create(true).open(lockfile_path)?;
 	write!(file, "{}", state_id)?;
 	drop(file);
+	
 	thread::sleep(time::Duration::new(0, 1000));
 	match get_lock_acquired(lockfile_path, state_id) {
 		Ok(true) => Ok(()),
@@ -156,17 +160,6 @@ impl State {
 		let _ = self.items.insert(String::from(var), serde_yaml::to_string(&value)?);
 		self.write_manifest()
 	}
-	
-	/*
-	pub fn set<'a, R, T>(&mut self, var: &str, value: &'a R) -> Result<()> 
-	where &'a T: 'a + From<&'a R>, T: Serialize {
-		let value: &'a T = value.into();
-		if self.preserved.contains_key(var) {
-			return GenErr!("nonvolatile: can't set a variable with the same name as a preserved file/folder");
-		}
-		let _ = self.items.insert(String::from(var), serde_yaml::to_string(value)?);
-		self.write_manifest()
-	}*/
 	
 	
 	pub fn get<'de, T>(&self, var: &str) -> Option<T> where for<'a> T: Deserialize<'a> {
