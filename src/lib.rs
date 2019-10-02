@@ -182,9 +182,8 @@ impl State {
 	}
 	
 	
-	pub fn new(name: &str) -> Result<State> {
-		let dir = get_storage_dir()?;
-		let path = format!("{}/{}", &dir, name);
+	pub fn new_from(name: &str, path: &str) -> Result<State> {
+		let path = format!("{}/{}", path, name);
 		create_dir_all(&path)?;
 		
 		let items: HashMap<String, String> = HashMap::new();
@@ -216,9 +215,14 @@ impl State {
 	}
 	
 	
-	pub fn load(name: &str) -> Result<State> {
-		let dir = get_storage_dir()?;		
-		let path = format!("{}/{}", &dir, name);
+	pub fn new(name: &str) -> Result<State> {
+		let dir = get_storage_dir()?;
+		State::new_from(name, &dir)
+	}
+	
+	
+	pub fn load_from(name: &str, path: &str) -> Result<State> {
+		let path = format!("{}/{}", path, name);
 		let manifest_path = format!("{}/{}", &path, ".manifest");
 		
 		let state_id = get_state_id();
@@ -249,8 +253,19 @@ impl State {
 	}
 	
 	
+	pub fn load(name: &str) -> Result<State> {
+		let dir = get_storage_dir()?;		
+		State::load_from(name, &dir)
+	}
+	
+	
 	pub fn load_else_create(name: &str) -> Result<State> {
 		State::load(name).or_else(|_| State::new(name))
+	}
+	
+	
+	pub fn load_else_create_from(name: &str, path: &str) -> Result<State> {
+		State::load_from(name, path).or_else(|_| State::new_from(name, path))
 	}
 	
 	
