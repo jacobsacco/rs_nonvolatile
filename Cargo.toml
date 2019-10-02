@@ -1,6 +1,6 @@
 [package]
 name = "nonvolatile"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
 edition = "2018"
 description = "A package providing the ability to store configuration data out of the way"
