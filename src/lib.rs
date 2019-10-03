@@ -130,7 +130,13 @@ fn acquire_dir(lockfile_path: &str, state_id: &str) -> Result<()> {
 	
 	let _ = remove_file(lockfile_path);
 	let mut file = OpenOptions::new().write(true).create(true).open(lockfile_path)?;
-	write!(file, "{}", state_id)?;
+	match write!(file, "{}", state_id) {
+		Ok(_) => (),
+		Err(e) => {
+			let _ = remove_file(lockfile_path);
+			return Err(e.into());
+		},
+	};
 	drop(file);
 	
 	thread::sleep(time::Duration::new(0, 1000));
@@ -182,8 +188,8 @@ impl State {
 	}
 	
 	
-	pub fn new_from(name: &str, path: &str) -> Result<State> {
-		let path = format!("{}/{}", path, name);
+	pub fn new_from(name: &str, storage_path: &str) -> Result<State> {
+		let path = format!("{}/{}", storage_path, name);
 		create_dir_all(&path)?;
 		
 		let items: HashMap<String, String> = HashMap::new();
@@ -191,7 +197,6 @@ impl State {
 		
 		let state_id = get_state_id();
 		let lockfile_path = format!("{}/{}", &path, "~rust_nonvolatile.lock");
-		
 		acquire_dir(&lockfile_path, &state_id)?;
 		
 		let state = State {
@@ -209,7 +214,7 @@ impl State {
 			Ok(_) => Ok(state),
 			Err(e) => {
 				let _ = remove_file(&lockfile_path);
-				Err(e)
+				Err(e.into())
 			}
 		}
 	}
@@ -221,8 +226,8 @@ impl State {
 	}
 	
 	
-	pub fn load_from(name: &str, path: &str) -> Result<State> {
-		let path = format!("{}/{}", path, name);
+	pub fn load_from(name: &str, storage_path: &str) -> Result<State> {
+		let path = format!("{}/{}", storage_path, name);
 		let manifest_path = format!("{}/{}", &path, ".manifest");
 		
 		let state_id = get_state_id();
