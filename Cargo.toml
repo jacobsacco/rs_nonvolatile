@@ -1,6 +1,6 @@
 [package]
 name = "nonvolatile"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
 edition = "2018"
 description = "A package providing the ability to store configuration data out of the way"
@@ -12,15 +12,15 @@ categories = ["config", "database", "filesystem"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[badges]
-maintenance = { status = "actively-developed" }
+#[badges]
+#maintenance = { status = "actively-developed" }
 
 [dependencies]
-serde = { version = "1.0.98", features = ["derive"] }
+serde = { version = "1.0.104", features = ["derive"] }
 whoami = "0.5.3"
-serde_yaml = "0.8.9"
+serde_yaml = "0.8.11"
 generic_error = "0.1.0"
 fs_util = "0.1.0"
-sysinfo = "0.9.1"
-rand = "0.7.0"
+sysinfo = "0.10.5"
+rand = "0.7.3"
 lazy_static = "1.4.0"

@@ -280,6 +280,12 @@ impl State {
 			let _ = remove_dir_all(path);
 		} 
 	}
+    
+    
+    pub fn destroy_state_from(name: &str, storage_path: &str) {
+        let path = format!("{}/{}", storage_path, name);
+        let _ = remove_dir_all(path);
+    }
 	
 	
 	pub fn has(&self, item: &str) -> bool {
