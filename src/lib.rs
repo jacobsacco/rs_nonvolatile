@@ -1,6 +1,6 @@
 
 use whoami;
-use whoami::Platform::{Linux, Windows};
+use whoami::Platform::{Linux, Windows, MacOS};
 use serde::{Serialize, Deserialize};
 use serde_yaml;
 use std::fs::{
@@ -66,6 +66,9 @@ fn get_storage_dir() -> Result<String> {
 		Windows => {
 			build_var_path("appdata", "rust_nonvolatile")
 		},
+		MacOS => {
+			build_var_path("HOME", ".local/rust_nonvolatile")
+		}
 		_ => GenErr!("nonvolatile: {} not supported", whoami::platform()),
 	}
 }
