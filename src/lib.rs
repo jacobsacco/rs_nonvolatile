@@ -110,7 +110,7 @@ use std::time;
 use std::mem::drop;
 use std::vec::Vec;
 use rand::random;
-use sysinfo::{System, ProcessExt, SystemExt};
+use sysinfo::{System, ProcessExt, SystemExt, Pid};
 use generic_error::{Result, GenErr, GenericError};
 use fs_util::copy_dir;
 
@@ -170,7 +170,7 @@ fn get_state_id() -> Result<String> {
 	let this_pid = process::id();
 	let mut system = System::new();
 	system.refresh_processes();
-	let this_proc = match system.get_processes().get(&(this_pid as i32)) {
+	let this_proc = match system.get_processes().get(&(this_pid as Pid)) {
 		Some(process) => process,
 		None => return GenErr!("nonvolatile internal error: my pid should be {} but no process is listed at that PID", this_pid)
 	};
