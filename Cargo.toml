@@ -1,6 +1,6 @@
 [package]
 name = "nonvolatile"
-version = "0.7.1"
+version = "0.8.0"
 authors = ["Jacob Sacco <jacobsacco@ou.edu>"]
 edition = "2018"
 description = "A package providing the ability to store configuration data out of the way"
@@ -21,6 +21,6 @@ whoami = "0.5.3"
 serde_yaml = "0.8.11"
 generic_error = "0.2.0"
 fs_util = "0.1.1"
-sysinfo = "0.10.5"
+sysinfo = "0.20.0"
 rand = "0.7.3"
 lazy_static = "1.4.0"

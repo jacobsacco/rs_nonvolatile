@@ -23,7 +23,7 @@ use std::time;
 use std::mem::drop;
 use std::vec::Vec;
 use rand::random;
-use sysinfo::{System, SystemExt};
+use sysinfo::{System, ProcessExt, SystemExt};
 use generic_error::{Result, GenErr, GenericError};
 use fs_util::copy_dir;
 
@@ -53,7 +53,13 @@ enum WhoOwns {
 
 
 fn build_var_path(var: &str, sub_dir: &str) -> Result<String> {
-	let s = env::var(var)?;
+	let s = match env::var(var) {
+		Ok(s) => s,
+		Err(_) => match whoami::platform() {	//An error here indicates that either $HOME or %appdata% is not defined
+			Windows => String::from("C:/ProgramData"),
+			_ => String::from("/etc")
+		}
+	};
 	Ok(format!("{}/{}", s, sub_dir))
 }
 
@@ -74,8 +80,16 @@ fn get_storage_dir() -> Result<String> {
 }
 
 
-fn get_state_id() -> String {
-	format!("{}-{}", process::id(), random::<u32>())
+fn get_state_id() -> Result<String> {
+	let this_pid = process::id();
+	let mut system = System::new();
+	system.refresh_processes();
+	let this_proc = match system.processes().get(&(this_pid as i32)) {
+		Some(process) => process,
+		None => return GenErr!("nonvolatile internal error: my pid should be {} but no process is listed at that PID", this_pid)
+	};
+	let exe_path = this_proc.exe().to_string_lossy().to_string();
+	Ok(format!("{}\n{}\n{}", process::id(), random::<u32>(), exe_path))
 }
 
 
@@ -83,9 +97,9 @@ fn match_state_id(my_id: &str, read_id: &str) -> WhoOwns {
 	if my_id == read_id {
 		return WhoOwns::Me;
 	}
-	let parts: Vec<&str> = read_id.split("-").collect();
+	let parts: Vec<&str> = read_id.split("\n").collect();
 	let parts = match parts.len() {
-		2 => (parts[0], parts[1]),
+		3 => (parts[0], parts[1], parts[2]),
 		_ => return WhoOwns::Nobody,
 	};
 	let read_pid: u32 = match parts.0.parse() {
@@ -96,8 +110,9 @@ fn match_state_id(my_id: &str, read_id: &str) -> WhoOwns {
 	let mut system = System::new();
 	system.refresh_processes();
 	
-	for (other_pid, _proc) in system.get_process_list() {
-		if *other_pid as u32 == read_pid {
+	for (other_pid, process) in system.processes() {
+		let exe_path = process.exe().to_string_lossy().to_string();
+		if *other_pid as u32 == read_pid && parts.2 == &exe_path {
 			return WhoOwns::Other;
 		}
 	}
@@ -198,7 +213,10 @@ impl State {
 		let items: HashMap<String, String> = HashMap::new();
 		let preserved: HashMap<String, String> = HashMap::new();
 		
-		let state_id = get_state_id();
+		let state_id = match get_state_id() {
+			Ok(id) => id,
+			Err(e) => return Err(e.into())
+		};
 		let lockfile_path = format!("{}/{}", &path, "~rust_nonvolatile.lock");
 		acquire_dir(&lockfile_path, &state_id)?;
 		
@@ -233,7 +251,10 @@ impl State {
 		let path = format!("{}/{}", storage_path, name);
 		let manifest_path = format!("{}/{}", &path, ".manifest");
 		
-		let state_id = get_state_id();
+		let state_id = match get_state_id() {
+			Ok(id) => id,
+			Err(e) => return Err(e.into())
+		};
 		let lockfile_path = format!("{}/{}", &path, "~rust_nonvolatile.lock");
 		
 		acquire_dir(&lockfile_path, &state_id)?;
