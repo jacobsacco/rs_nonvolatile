@@ -1,4 +1,11 @@
 
+/*
+tests for nonvolatile
+
+Jacob Sacco
+August 2019
+*/
+
 use super::*;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
