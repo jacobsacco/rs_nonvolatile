@@ -17,6 +17,8 @@ have the same `State` open at the same time).
 Most of the builtin types, and any type that implements `serde::Serialize`/`Deserialize` 
 may be passed into and read from `State::set` and `State::get`.
 
+[Check out the documentation here for more detailed information](https://docs.rs/nonvolatile)
+
 
 # Example
 
@@ -28,8 +30,9 @@ fn main() -> Result<()> {
 	
 	//create a new state instance with the name "foo"
 	let mut state = State::load_else_create("foo")?;
-	//set a variable in foo
-	state.set("var", String::from("some value"))?;
+	//set some variables in foo
+	state.set("var", "some value")?;
+	state.set("user_wants_pie", true)?;
 	
 	//destroy the state variable
 	drop(state);
@@ -37,7 +40,8 @@ fn main() -> Result<()> {
 	//create a new state instance
 	let state = State::load_else_create("foo")?;
 	//retrieve the previously set variable.
-	println!("foo: {}", state.get::<String>("var").unwrap());  //"some value"	
+	assert_eq!(state.get::<bool>("user_wants_pie"), Some(true));
+	assert_eq!(state.get::<String>("var").unwrap(), "some value");
 	Ok(())
 }
 ```
@@ -71,7 +75,7 @@ you will be left with two non-matching states with the same name in different pl
  pub fn delete               (&mut self, name: &str)          -> Result<()>
 
  pub fn load_else_create     (name: &str)                     -> Result<State>
- pub fn load_else_create_from(name: &str, path: &str)         -> Result<State>
+ pub fn load_else_create_from(name: &str, storage_path: &str) -> Result<State>
  pub fn new                  (name: &str)                     -> Result<State>
  pub fn new_from             (name: &str, storage_path: &str) -> Result<State>
  pub fn load                 (name: &str)                     -> Result<State>

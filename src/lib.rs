@@ -30,8 +30,9 @@ August 2019
 //!	
 //!	//create a new state instance with the name "foo"
 //!	let mut state = State::load_else_create("foo")?;
-//!	//set a variable in foo
-//!	state.set("var", String::from("some value"))?;
+//!	//set some variables in foo
+//!	state.set("var", "some value")?;
+//!	state.set("user_wants_pie", true)?;
 //!	
 //!	//destroy the state variable
 //!	drop(state);
@@ -39,7 +40,8 @@ August 2019
 //!	//create a new state instance
 //!	let state = State::load_else_create("foo")?;
 //!	//retrieve the previously set variable.
-//!	println!("foo: {}", state.get::<String>("var").unwrap());  //"some value"	
+//!	assert_eq!(state.get::<bool>("user_wants_pie"), Some(true));
+//!	assert_eq!(state.get::<String>("var").unwrap(), "some value");
 //!	Ok(())
 //!}
 //!```
@@ -73,7 +75,7 @@ August 2019
 //! pub fn delete               (&mut self, name: &str)          -> Result<()>
 //!
 //! pub fn load_else_create     (name: &str)                     -> Result<State>
-//! pub fn load_else_create_from(name: &str, path: &str)         -> Result<State>
+//! pub fn load_else_create_from(name: &str, storage_path: &str) -> Result<State>
 //! pub fn new                  (name: &str)                     -> Result<State>
 //! pub fn new_from             (name: &str, storage_path: &str) -> Result<State>
 //! pub fn load                 (name: &str)                     -> Result<State>
@@ -91,7 +93,6 @@ use whoami::Platform::{Linux, Windows, MacOS};
 use serde::{Serialize, Deserialize};
 use serde_yaml;
 use std::fs::{
-	copy,
 	create_dir_all, 
 	rename, 
 	metadata,
@@ -99,7 +100,6 @@ use std::fs::{
 	OpenOptions,
 	remove_file,
 	remove_dir_all,
-	canonicalize,
 };
 use std::collections::HashMap;
 use std::env;
@@ -109,10 +109,13 @@ use std::thread;
 use std::time;
 use std::mem::drop;
 use std::vec::Vec;
+use std::convert::Into;
+use std::path::PathBuf;
 use rand::random;
 use sysinfo::{System, ProcessExt, SystemExt, Pid};
 use generic_error::{Result, GenErr, GenericError};
-use fs_util::copy_dir;
+use regex::Regex;
+use lazy_static::lazy_static;
 
 #[cfg(test)]
 mod tests;
@@ -127,7 +130,6 @@ pub struct State {
 	manifest_path: String,
 	tmp_manifest_path: String,
 	items: HashMap<String, String>,
-	preserved: HashMap<String, String>,
 }
 
 
@@ -135,6 +137,51 @@ enum WhoOwns {
 	Me,
 	Other,
 	Nobody,
+}
+
+
+lazy_static! {
+	static ref PATH_VALID: Regex = Regex::new("^[a-zA-Z0-9-_ ~.()]+$").unwrap();
+}
+
+fn check_path_valid(path: &str) -> Result<()> {
+	if path.len() == 0 {
+		return GenErr!("nonvolatile: state name/path cannot be empty");
+	} 
+	if path.len() > 500 {
+		return GenErr!("nonvolatile: state name/path cannot be longer than 200 chars. ({} chars)", path.len());
+	}
+	if path.len() > 200 {
+		return GenErr!("nonvolatile: state name/path cannot be longer than 200 chars. (\"{}\" is {} chars)", path, path.len());
+	}
+	if !PATH_VALID.is_match(path) {
+		return GenErr!("nonvolatile: state name/path can only contain alphanumeric characters, spaces, and \"-_~.()\". \"{}\" is invalid", path);
+	}
+	if path.starts_with(".") || path.starts_with(" ") {
+		return GenErr!("nonvolatile: state name/path cannot start with '{}'. (\"{}\")", path.chars().nth(0).unwrap(), path);
+	}
+	if path.ends_with(" ") {
+		return GenErr!("nonvolatile: state name/path cannot end with ' '. (\"{}\")", path);
+	}
+	Ok(())
+}
+
+
+///std::fs has a canonicalization function, but it doesn't work on paths that don't exist,
+///so this is a poor-man's rendition
+fn canonicalize_path<S>(path: S) -> String
+	where S: Into<PathBuf>
+{
+	let path: PathBuf = path.into();
+	let mut cwd = match env::current_dir() {
+		Ok(cwd) => cwd,
+		Err(_) => return path.to_string_lossy().to_string() //if fetching the CWD fails, then give up and return the original.
+	};
+	cwd.push(path);
+	let full_path = cwd.to_string_lossy().to_string(); //.push just returns `path` if `path` is absolute
+	let full_path = full_path.replace("\\", "/");
+	let full_path = full_path.replace("//", "/");
+	return full_path.replace("/./", "/");
 }
 
 
@@ -282,9 +329,6 @@ impl State {
 	///state.set("some_other_var", some_other_var.clone()) //save the map for later!
 	///```
 	pub fn set<T>(&mut self, var: &str, value: T) -> Result<()> where T: Serialize {
-		if self.preserved.contains_key(var) {
-			return GenErr!("nonvolatile: can't set a variable with the same name as a preserved file/folder");
-		}
 		let _ = self.items.insert(String::from(var), serde_yaml::to_string(&value)?);
 		self.write_manifest()
 	}
@@ -325,7 +369,7 @@ impl State {
 	///println!("{}", state.has("user_wants_to_die")); // true
 	///```
 	pub fn has(&self, item: &str) -> bool {
-		self.items.contains_key(item) || self.preserved.contains_key(item)
+		self.items.contains_key(item)
 	}
 	
 	
@@ -342,19 +386,14 @@ impl State {
 	///```
 	pub fn delete(&mut self, name: &str) -> Result<()> {
 		let _ = self.items.remove(name);
-		if let Some(_) = self.preserved.remove(name) {
-			let path = format!("{}/{}", &self.path, name);
-			remove_file(&path)?;
-			remove_dir_all(&path)?;
-		}
 		self.write_manifest()
 	}
 
 
 	///Load state of the given name if it exists. If not, create new state and return that.
 	///
-	///The name must obey naming rules for your filesystem, so spaces and special
-	///characters should be avoided.
+	///The name must obey naming rules for your filesystem. To simplify cross platform
+	///compatibility, names are restricted to alphanumeric characters, spaces, and any of `-_~.()`.
 	///
 	///### Example
 	///
@@ -372,12 +411,12 @@ impl State {
 	///state exists exists. If not, create new state at the custom location and 
 	///return that.
 	///
-	///The name must obey naming rules for your filesystem, so spaces and special
-	///characters should be avoided.
+	///The name must obey naming rules for your filesystem. To simplify cross platform
+	///compatibility, names are restricted to alphanumeric characters, spaces, and any of `-_~.()`.
 	///
 	///the storage path may be relative or absolute, and doesn't have to already exist 
 	///(but it must be creatable). The state will be stored in 
-	///`<storage_path>/rust_nonvolatile`. Accessing that location directly is not recommended.
+	///`<storage_path>/<name>`. Accessing that location directly is not recommended.
 	///
 	///### Example
 	///
@@ -386,15 +425,15 @@ impl State {
 	///let my_var = String::from("this is like a string or something");
 	///state.set("my var", &my_var);
 	///```
-	pub fn load_else_create_from(name: &str, path: &str) -> Result<State> {
-		State::load_from(name, path).or_else(|_| State::new_from(name, path))
+	pub fn load_else_create_from(name: &str, storage_path: &str) -> Result<State> {
+		State::load_from(name, storage_path).or_else(|_| State::new_from(name, storage_path))
 	}
 
 
 	///Create a new State object with the given name.
 	///
-	///The name must obey naming rules for your filesystem, so spaces and special
-	///characters should be avoided.
+	///The name must obey naming rules for your filesystem. To simplify cross platform
+	///compatibility, names are restricted to alphanumeric characters, spaces, and any of `-_~.()`.
 	///
 	///If there is a preexisting state with that name, it will be overwritten by `new`.
 	///If the preexisting state is open by someone or something else, then `new` will fail
@@ -415,12 +454,12 @@ impl State {
 
 	///Create a new State object with the given name, and a custom storage location.
 	///
-	///The name must obey naming rules for your filesystem, so spaces and special
-	///characters should be avoided.
+	///The name must obey naming rules for your filesystem. To simplify cross platform
+	///compatibility, names are restricted to alphanumeric characters, spaces, and any of `-_~.()`.
 	///
 	///the storage path may be relative or absolute, and doesn't have to already exist 
 	///(but it must be creatable). The state will be stored in 
-	///`<storage_path>/rust_nonvolatile`. Accessing that location directly is not recommended.
+	///`<storage_path>/<name>`. Accessing that location directly is not recommended.
 	///
 	///If there is a preexisting state with that name, it will be overwritten by `new_from`.
 	///If the preexisting state is open by someone or something else, then `new_from` will fail
@@ -434,11 +473,11 @@ impl State {
 	///state.set("my var", my_var);
 	///```
 	pub fn new_from(name: &str, storage_path: &str) -> Result<State> {
-		let path = format!("{}/{}", storage_path, name);
+		check_path_valid(name)?;
+		let path = canonicalize_path(format!("{}/{}", storage_path, name));
 		create_dir_all(&path)?;
 		
 		let items: HashMap<String, String> = HashMap::new();
-		let preserved: HashMap<String, String> = HashMap::new();
 		
 		let state_id = match get_state_id() {
 			Ok(id) => id,
@@ -455,7 +494,6 @@ impl State {
 			manifest_path: format!("{}/{}", &path, ".manifest"),
 			tmp_manifest_path: format!("{}/{}", &path, ".manifest_tmp"),
 			items: items,
-			preserved: preserved,
 		};
 		
 		match state.write_manifest() {
@@ -497,7 +535,8 @@ impl State {
 	///state.set("my var", &my_var);
 	///```
 	pub fn load_from(name: &str, storage_path: &str) -> Result<State> {
-		let path = format!("{}/{}", storage_path, name);
+		check_path_valid(name)?;
+		let path = canonicalize_path(format!("{}/{}", storage_path, name));
 		let manifest_path = format!("{}/{}", &path, ".manifest");
 		
 		let state_id = match get_state_id() {
@@ -546,6 +585,9 @@ impl State {
 	///State::destroy_state("foo");
 	///```
 	pub fn destroy_state(name: &str) {
+		if let Err(_) = check_path_valid(name) {
+			return;
+		}
 		if let Ok(dir) = get_storage_dir() {
 			let path = format!("{}/{}", dir, name);
 			let _ = remove_dir_all(path);
@@ -569,59 +611,13 @@ impl State {
 	///State::destroy_state_from("foo", ".");
 	///```
 	pub fn destroy_state_from(name: &str, storage_path: &str) {
+		if let Err(_) = check_path_valid(name) {
+			return;
+		}
 		let path = format!("{}/{}", storage_path, name);
 		let _ = remove_dir_all(path);
 	}
 	
-	
-	fn _preserve(&mut self, path: &str, name: &str) -> Result<()> {
-		if self.items.contains_key(name) {
-			return GenErr!("nonvolatile: can't preserve a file with the same name as a set variable");
-		}
-		let path = match canonicalize(path)?.to_str() {
-			Some(p) => String::from(p),
-			None => return GenErr!("nonvolatile preserve: failed to canonicalize path"),
-		};
-		let tmp_name = format!("tmp_{}", name);
-		let tmp_dest = format!("{}/{}", &self.path, &tmp_name);
-		let dest = format!("{}/{}", &self.path, name);
-		if metadata(&path)?.is_dir() {
-			copy_dir(&path, &tmp_dest)?;
-		}
-		else {
-			copy(&path, &tmp_dest)?;
-		}
-		
-		let _ = self.preserved.insert(String::from(name), String::from(path));
-		self.write_manifest()?;
-		
-		rename(tmp_dest, dest)?;
-		Ok(())
-	}
-
-
-	fn _restore(&self, name: &str) -> Result<()> {
-		let path = match self.preserved.get(name) {
-			Some(p) => p,
-			None => return GenErr!("Nothing by the name '{}' has been preserved", name),
-		};
-		self._restore_to(name, path)
-	}
-	
-	
-	fn _restore_to(&self, name: &str, path: &str) -> Result<()> {
-		if !self.preserved.contains_key(name) {
-			return GenErr!("Nothing by the name '{}' has been preserved", name);
-		}
-		let preserved_path = format!("{}/{}", &self.path, name);
-		if metadata(&preserved_path)?.is_dir() {
-			copy_dir(&preserved_path, path)?;
-		}
-		else {
-			copy(&preserved_path, path)?;
-		}
-		Ok(())
-	}
 }
 
 

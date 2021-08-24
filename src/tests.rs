@@ -8,6 +8,7 @@ August 2019
 
 use super::*;
 use std::sync::Mutex;
+use std::fs::remove_dir_all;
 use lazy_static::lazy_static;
 
 
@@ -75,7 +76,53 @@ fn test_dir_locking() {
 	}
 	
 	let state2 = State::load_else_create(&name).unwrap();
-	println!("foo: {}", state2.get::<String>("var").unwrap());  //"some value"
+	println!("foo: {:?}", state2.get::<String>("var"));  //should never reach this point
+}
+
+
+#[test]
+#[should_panic]
+fn test_name_abuse1() {
+	let _ = State::load_else_create("\\\\?\\> '.|:..&\\/().,;?* \" 🙂 lol").unwrap();
+}
+
+
+#[test]
+#[should_panic]
+fn test_name_abuse2() {
+	let _ = State::load_else_create("..").unwrap();
+}
+
+
+#[test]
+#[should_panic]
+fn test_name_abuse3() {
+	let _ = State::load_else_create("../should_not_exist").unwrap();
+}
+
+
+#[test]
+fn test_custom_storage_dir() {
+	let name = setup_env();
+	let custom_dir = "./~rust_nonvolatile_test_tmp_dir";
+	State::destroy_state_from(&name, custom_dir);
+	State::destroy_state(&name);
+	let mut s = State::new_from(&name, custom_dir).unwrap();
+	test_state(&mut s);
+	s.set("check persistence", true).unwrap();
+	drop(s);
+
+	match State::load(&name) {
+		Ok(_) => panic!("Successfully loaded a state that should not exist"),
+		Err(_) => ()
+	};
+
+	let mut s = State::load_from(&name, custom_dir).unwrap();
+	test_state(&mut s);
+	assert_eq!(s.get("check persistence"), Some(true));
+	drop(s);
+
+	remove_dir_all("./~rust_nonvolatile_test_tmp_dir").unwrap();
 }
 
 
@@ -152,8 +199,9 @@ fn test_example() {
 	
 	//create a new state instance with the name "foo"
 	let mut state = State::load_else_create("foo").unwrap();
-	//set a variable in foo
-	state.set("var", String::from("some value")).unwrap();
+	//set some variables in foo
+	state.set("var", "some value").unwrap();
+	state.set("user_wants_pie", true).unwrap();
 	
 	//destroy the state variable
 	drop(state);
@@ -161,41 +209,7 @@ fn test_example() {
 	//create a new state instance
 	let state = State::load_else_create("foo").unwrap();
 	//retrieve the previously set variable.
-	println!("foo: {}", state.get::<String>("var").unwrap());  //"some value"	
+	assert_eq!(state.get::<bool>("user_wants_pie"), Some(true));
+	assert_eq!(state.get::<String>("var").unwrap(), "some value");
 }
 
-/*
-#[test]
-fn test_preserve_and_restore() {
-	return
-	println!("reset any state and the tmp/ directory...");
-	let name = setup_env();
-	let _ = fs::remove_dir_all("tmp");
-	
-	println!("create a directory with stuff to manipulate...");
-	fs::create_dir_all("tmp/foo").unwrap();
-	fs::create_dir_all("tmp/foo_but_elsewhere").unwrap();
-	fs::write("tmp/foo/bar.txt", "foobar!").unwrap();
-	fs::read_dir("tmp/foo").unwrap();
-	
-	//println!("{:?}", fs::canonicalize("tmp/foo"));
-	println!("create the state and preserve the directory...");
-	let mut s = State::load_else_create("test").unwrap();
-	s._preserve("tmp/foo", "foo").unwrap();
-	
-	println!("destroy the directory and make sure it's gone...");
-	fs::remove_dir_all("tmp/foo").unwrap();
-	match fs::read_dir("tmp/foo") {
-		Ok(_) => panic!("tmp/foo still exists?!"),
-		_ => (),
-	};
-	
-	println!("restore the directory and make sure it's there again...");
-	s._restore("foo");
-	fs::read_dir("tmp/foo").unwrap();
-	
-	println!("restore the directory someplace else and make sure it shows up there too...");
-	s._restore_to("foo", "tmp/foo_but_elsewhere").unwrap();
-	fs::read_dir("tmp/foo_but_elsewhere/foo").unwrap();
-}
-*/
